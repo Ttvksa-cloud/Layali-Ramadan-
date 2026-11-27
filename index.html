@@ -27,6 +27,13 @@ table{width:100%;border-collapse:collapse}td,th{padding:11px 8px;text-align:righ
 .keys{display:flex;gap:6px;font-size:26px;color:var(--gold)}.bar{height:12px;border-radius:10px;background:#f4e9ee;overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,#e8a9c7,#c9a45d)}
 .demo{background:#fbf4e4;border:1px dashed #e0c98e;border-radius:14px;padding:12px 16px;font-size:12px;line-height:2;color:#7d6530}.demo b{direction:ltr;unicode-bidi:embed}.ann{border-right:3px solid var(--gold);padding:4px 14px;margin-bottom:12px}
 @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+
+.cdgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;max-width:520px;margin:10px auto 4px}.cdgrid div{background:#fbf4e4;border:1px solid #efe0b8;border-radius:16px;padding:14px 6px}.cdgrid b{display:block;font-size:30px;color:var(--deep);font-variant-numeric:tabular-nums}.cdgrid span{font-size:11px;color:#a27d39}
+@media(max-width:430px){.cdgrid b{font-size:24px}}
+
+.annimg{display:block;max-width:100%;max-height:420px;border-radius:16px;margin-top:10px;border:1px solid #f0e3e9}.ann .muted{white-space:pre-line}
+
+.prizes{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}.prz{background:#fff;border:1px solid #f0e3e9;border-radius:22px;padding:18px;box-shadow:0 8px 24px #9d71800b}.przhead{display:flex;align-items:center;gap:10px}.przhead h3{margin:0;font-size:17px;color:var(--deep)}.przplace{font-size:26px;min-width:34px;text-align:center}.przimg{display:block;width:100%;max-height:220px;object-fit:contain;background:#fbf4e4;border-radius:16px;margin:12px 0}.przhow{white-space:pre-line;font-size:13px;line-height:2;color:#7b6671;margin:8px 0 0}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js" onerror="var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js';document.head.appendChild(s)"></script>
 </head><body><div id="app"></div><script>(()=>{
@@ -44,9 +51,9 @@ const RAR={common:['عادي',''],rare:['نادر','y'],epic:['أسطوري','r'
 const TYPES={badge:'وسام',title:'لقب',cosmetic:'عنصر تجميلي'};
 const IDEAS=[['صيد','أكبر سمكة','اصطادي أكبر سمكة خلال ساعة وصوّري الشاشة مع الوزن.'],['صيد','أندر سمكة','اصطادي أندر سمكة تقدرين عليها وصوّريها.'],['تصوير','صيد الطيور بالكاميرا','صوّري ٣ أنواع مختلفة من الطيور في اللعبة.'],['تصوير','صيد الحشرات بالكاميرا','صوّري ٣ أنواع مختلفة من الحشرات.'],['بيوت','بيت بثيمة رمضانية','صمّمي بيتك بطابع رمضاني وصوّري الغرفة.'],['رسم','ارسمي شخصيتك','ارسمي شخصيتك في اللعبة بأي أسلوب وارفعي الرسمة.'],['أزياء','أفضل إطلالة بثيمة','نسّقي إطلالة على ثيمة تحددها الإدارة وصوّريها.'],['باركور','باركور نونا','أسرع وقت في مسار باركور تجهزه نونا، صوّري الوقت النهائي.'],['جمع','الفقاعات الوردية','اجمعي أكبر عدد من الفقاعات الوردية في ساعة.'],['مجتمع','إفطار جماعي','نظّمي لقاء داخل اللعبة وصوّري المائدة.']];
 
-let sb=null,me=null,cur='#/',armed='',editTask=null,adminTab='review',showAdmin=false,newCode=null,busy=false;
+let sb=null,me=null,cur='#/',armed='',editTask=null,editPrize=null,adminTab='review',showAdmin=false,newCode=null,busy=false;
 try{cur=location.hash||'#/'}catch(e){}
-const emptyC=()=>({anns:[],board:[],tasks:[],subs:[],points:[],grants:[],keys:[],chests:[],rewards:[],settings:[],rank:null,profiles:[],codes:[],audit:[]});
+const emptyC=()=>({anns:[],board:[],tasks:[],subs:[],points:[],grants:[],keys:[],chests:[],rewards:[],settings:[],rank:null,cd:null,prizes:[],profiles:[],codes:[],audit:[]});
 let C=emptyC();
 const isStaff=()=>!!me&&['admin','moderator'].includes(me.role);
 const isAdmin=()=>!!me&&me.role==='admin';
@@ -66,11 +73,14 @@ async function loadMe(){
   const {data}=await sb.auth.getSession();const u=data&&data.session&&data.session.user;
   if(!u){me=null;return}
   const r=await sb.from('profiles').select('*').eq('id',u.id).maybeSingle();
-  if(r.error||!r.data||!r.data.is_active){await sb.auth.signOut();me=null;return 'inactive'}
+  if(r.error){await sb.auth.signOut();me=null;return 'err:'+(r.error.message||r.error.code)}
+  if(!r.data||!r.data.is_active){await sb.auth.signOut();me=null;return 'inactive'}
   me={id:u.id,name:r.data.display_name,role:r.data.role};
 }
 async function refresh(){
   const j={anns:rows(sb.from('announcements').select('*').order('created_at',{ascending:false})),board:rows(sb.from('public_leaderboard').select('*'))};
+  j.cd=sb.from('settings').select('countdown_title,countdown_at').eq('id',1).maybeSingle().then(r=>r.error?null:r.data);
+  j.prizes=sb.from('prizes').select('*').order('place').then(r=>r.error?[]:r.data);
   if(me){
     j.tasks=rows(sb.from('tasks').select('*').order('week').order('created_at'));
     j.subs=rows(sb.from('submissions').select('*').order('submitted_at',{ascending:false}));
@@ -106,15 +116,33 @@ const evBox=s=>s?`<div class="ev" data-path="${esc(s.evidence_path)}" data-type=
 const need=()=>{if(!me){cur='#/login';return false}return true};
 const mySub=tid=>C.subs.find(x=>x.task_id===tid&&x.user_id===me.id);
 
+const cdHtml=()=>{const c=C.cd;if(!c||!c.countdown_at)return'';
+  return `<section class="panel cd" id="cd" data-at="${esc(c.countdown_at)}" style="margin-top:18px;text-align:center"><p class="eyebrow">⏳ ${esc(c.countdown_title||'العد التنازلي')}</p>
+  <div class="cdgrid"><div><b id="cd-d">0</b><span>يوم</span></div><div><b id="cd-h">0</b><span>ساعة</span></div><div><b id="cd-m">0</b><span>دقيقة</span></div><div><b id="cd-s">0</b><span>ثانية</span></div></div>
+  <h3 id="cd-end" style="display:none;margin:6px 0">🌙 حان الوقت! انطلقنا</h3></section>`};
+function tick(){const el=$('#cd');if(!el)return;const t=new Date(el.dataset.at)-Date.now();if(isNaN(t))return;
+  if(t<=0){el.querySelector('.cdgrid').style.display='none';$('#cd-end').style.display='block';return}
+  const sec=Math.floor(t/1000),set=(k,v)=>{const n=$('#cd-'+k);if(n)n.textContent=v};
+  set('d',Math.floor(sec/86400));set('h',Math.floor(sec%86400/3600));set('m',Math.floor(sec%3600/60));set('s',sec%60)}
+setInterval(tick,1000);
+const toLocalInput=iso=>{if(!iso)return'';const d=new Date(iso),p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`};
+const pub=p=>sb.storage.from('media').getPublicUrl(p).data.publicUrl;
+const annImg=a=>a.image_path?`<img class="annimg" src="${esc(pub(a.image_path))}" alt="">`:'';
+const PL=['🥇','🥈','🥉'];
+const prizesHtml=()=>{if(!C.prizes.length)return'';
+  return `<section class="section" id="prizes"><div class="section-head"><div><p class="eyebrow">للفائزات</p><h2>الجوائز</h2></div><span class="mini-star">✦</span></div>
+  <div class="prizes">${C.prizes.map(p=>`<article class="prz"><div class="przhead"><span class="przplace">${PL[p.place-1]||p.place}</span><h3>${esc(p.title)}</h3></div>${p.image_path?`<img class="przimg" src="${esc(pub(p.image_path))}" alt="">`:''}<p class="przhow">${esc(p.how_to)}</p></article>`).join('')}</div></section>`};
 const V={};
 V['/']=()=>{
   const anns=C.anns.filter(a=>a.published);
   return shell(`<section class="hero"><div class="moon">☾</div><p class="eyebrow">أهلًا بكِ في عالمنا الرمضاني</p><h1>ليالي <span>Heartopia</span><br>الرمضانية</h1>
   <p class="intro">مساحة تجمع التحدي والإبداع والصداقات… وكل إنجاز له حكاية.</p>
   <div class="hero-actions"><a class="primary" href="${me?(isStaff()?'#/admin':'#/tasks'):'#/login'}">${me?'ادخلي':'دخول المشاركات'}</a><a class="secondary" href="#/leaderboard">المتصدرات</a></div><div class="lantern lantern-one">✧</div><div class="lantern lantern-two">✦</div></section>
+  ${cdHtml()}
+  ${prizesHtml()}
   <section class="section"><div class="section-head"><div><p class="eyebrow">داخل البطولة</p><h2>كل شيء في مكان واحد</h2></div><span class="mini-star">✦</span></div>
   <div class="cards">${[['🏆','المتصدرات','عرض أفضل عشر مشاركات في الموسم.','#/leaderboard'],['📋','المهام','تابعي المهام وأرسلي إثباتاتك للمراجعة.','#/tasks'],['✨','الصناديق','مكافآت رمزية وأوسمة أسبوعية.','#/chests'],['🗝️','مفاتيح الكنز','تُكتسب المفاتيح من المراكز الأولى فقط.','#/treasure']].map(([i,t,d,h])=>`<a href="${h}" style="text-decoration:none"><article class="feature"><div class="icon">${i}</div><h3>${t}</h3><p>${d}</p></article></a>`).join('')}</div></section>
-  <div class="grid2"><div class="panel"><h2>الإعلانات</h2>${anns.map(a=>`<div class="ann"><h3>${esc(a.title)}</h3><div class="muted">${esc(a.body)}</div></div>`).join('')||'<p class="muted">لا إعلانات.</p>'}</div>
+  <div class="grid2"><div class="panel"><h2>الإعلانات</h2>${anns.map(a=>`<div class="ann"><h3>${esc(a.title)}</h3><div class="muted">${esc(a.body)}</div>${annImg(a)}</div>`).join('')||'<p class="muted">لا إعلانات.</p>'}</div>
   <div class="panel"><h2>المتصدرات</h2>${lbTable(C.board.slice(0,5))}<p class="muted"><a href="#/leaderboard">عرض الكل</a></p></div></div>`,'#/');
 };
 V['/leaderboard']=()=>shell(`<div class="panel"><h2>🏆 المتصدرات — أفضل ١٠ مشاركات</h2>${lbTable(C.board,me)}<p class="muted">النقاط تُحسب من الإثباتات المعتمدة فقط.</p></div>`,'#/leaderboard');
@@ -158,7 +186,7 @@ V['/me']=()=>{if(!need())return'';
 
 V['/admin']=()=>{if(!need())return'';if(!isStaff())return shell('<div class="panel">هذه الصفحة للإدارة فقط.</div>');
   const pend=C.subs.filter(s=>s.status==='pending');
-  const tabs=[['review','المراجعة'],['tasks','المهام'],['people','المشاركات'],['rewards','الصناديق والمفاتيح'],['ann','الإعلانات والكنز'],['audit','سجل التدقيق']];
+  const tabs=[['review','المراجعة'],['tasks','المهام'],['people','المشاركات'],['rewards','الصناديق والمفاتيح'],['ann','الإعلانات والكنز'],['prizes','الجوائز'],['audit','سجل التدقيق']];
   const parts=C.profiles.filter(p=>p.role==='participant');
   const opt=a=>a.map(([v,t])=>`<option value="${esc(v)}">${esc(t)}</option>`).join('');
   let b='';
@@ -185,8 +213,14 @@ V['/admin']=()=>{if(!need())return'';if(!isStaff())return shell('<div class="pan
     ${isAdmin()?`<div class="panel"><h2>مفاتيح الكنز — المراكز ١–٣ فقط</h2>${top3.map(x=>`<div class="row" style="padding:8px 0"><span class="rank r${x.rank}">${x.rank}</span><span class="sp">${esc(x.display_name)} — ${x.points} نقطة</span>${C.keys.some(k=>k.user_id===x.user_id&&k.why==='ختام الموسم')?'<span class="pill g">مُنح</span>':`<button type="button" class="btn sm" data-act="key" data-id="${x.user_id}" data-place="${x.rank}">منح مفتاح</button>`}</div>`).join('')||'<p class="muted">لا نتائج بعد.</p>'}<p class="muted">يُمنح المفتاح لمن حصلت على مركز ١–٣ فقط، ولا يتكرر للمشاركة نفسها.</p>
     ${C.keys.map(k=>`<div class="row" style="padding:4px 0"><span class="sp">🗝️ ${esc(name(k.user_id))} — المركز ${k.place}</span>${delBtn('key',k.id)}</div>`).join('')}</div>`:''}`}
   if(adminTab==='ann'){const tr=C.settings[0]||{};
-    b=`<div class="panel"><h2>إعلان جديد</h2><form id="annf"><label>العنوان</label><input name="title" required><label>النص</label><textarea name="body" rows="3" required></textarea><button class="btn">نشر</button></form></div>${C.anns.map(a=>`<div class="panel row"><div class="sp"><h3>${esc(a.title)}</h3><div class="muted">${esc(a.body)}</div></div>${delBtn('ann',a.id)}</div>`).join('')}
-    ${isAdmin()?`<div class="panel"><h2>إعدادات الكنز</h2><form id="trf"><label>الاسم</label><input name="title" value="${esc(tr.treasure_title)}" required><label>عدد المفاتيح المطلوبة</label><input type="number" name="need" min="1" value="${tr.treasure_need??1}"><label>الوصف</label><textarea name="desc" rows="2">${esc(tr.treasure_desc)}</textarea><button class="btn">حفظ</button></form></div>`:''}`}
+    b=`<div class="panel"><h2>إعلان جديد</h2><form id="annf"><label>العنوان</label><input name="title" required><label>النص (تقدرين تكتبين عدة أسطر)</label><textarea name="body" rows="4" required></textarea><label>صورة (اختياري، مثل شكل الهدية)</label><input type="file" name="image" accept="image/*"><button class="btn">نشر</button></form></div>${C.anns.map(a=>`<div class="panel row"><div class="sp"><h3>${esc(a.title)}</h3><div class="muted">${esc(a.body)}</div>${annImg(a)}</div>${delBtn('ann',a.id)}</div>`).join('')}
+    ${isAdmin()?`<div class="panel"><h2>⏳ العد التنازلي (يظهر في الصفحة الرئيسية)</h2><form id="cdf"><label>العنوان (مثال: يبدأ رمضان بعد)</label><input name="title" value="${esc((C.cd||{}).countdown_title)}" required><label>التاريخ والوقت</label><input type="datetime-local" name="at" value="${toLocalInput((C.cd||{}).countdown_at)}" required><div class="row"><button class="btn">حفظ</button><button type="button" class="btn sec" data-act="clearcd">إزالة العد</button></div></form></div>
+    <div class="panel"><h2>إعدادات الكنز</h2><form id="trf"><label>الاسم</label><input name="title" value="${esc(tr.treasure_title)}" required><label>عدد المفاتيح المطلوبة</label><input type="number" name="need" min="1" value="${tr.treasure_need??1}"><label>الوصف</label><textarea name="desc" rows="2">${esc(tr.treasure_desc)}</textarea><button class="btn">حفظ</button></form></div>`:''}`}
+  if(adminTab==='prizes'){const ep=C.prizes.find(x=>x.id===editPrize)||{};
+    b=`<div class="panel"><h2>${editPrize?'تعديل الجائزة':'جائزة جديدة'}</h2><form id="przf"><div class="grid2"><div><label>المركز (١ أو ٢ أو ٣)</label><input type="number" name="place" min="1" value="${ep.place??C.prizes.length+1}"></div><div><label>اسم الجائزة</label><input name="title" required value="${esc(ep.title)}" placeholder="مثال: اشتراك شهري"></div></div>
+    <label>كيف تستلم الفائزة الجائزة؟</label><textarea name="how" rows="4" placeholder="مثال: تتواصل معك الإدارة خلال ٣ أيام وترسل لك الجائزة على حسابك في اللعبة">${esc(ep.how_to)}</textarea>
+    <label>صورة الجائزة (اختياري)</label><input type="file" name="image" accept="image/*"><div class="row"><button class="btn">${editPrize?'حفظ التعديل':'إضافة'}</button>${editPrize?'<button type="button" class="btn sec" data-act="cancelprize">إلغاء</button>':''}</div></form></div>
+    <div class="panel"><h2>الجوائز الحالية</h2><p class="muted">اضغطي أيقونة الكاميرا 📷 جنب أي جائزة عشان ترفعين أو تغيّرين صورتها مباشرة.</p>${C.prizes.map(p=>`<div class="row" style="padding:10px 0;border-bottom:1px solid #f4e9ee"><span class="przplace">${PL[p.place-1]||p.place}</span>${p.image_path?`<img src="${esc(pub(p.image_path))}" style="width:56px;height:56px;object-fit:cover;border-radius:12px" alt="">`:''}<span class="sp"><b>${esc(p.title)}</b><div class="muted">${esc(p.how_to)}</div></span><label class="btn sec sm" style="cursor:pointer;margin:0">📷<input type="file" accept="image/*" data-prz="${p.id}" style="display:none"></label><button type="button" class="btn sec sm" data-act="editprize" data-id="${p.id}">تعديل</button>${delBtn('prize',p.id)}</div>`).join('')||'<p class="muted">لا جوائز بعد.</p>'}</div>`}
   if(adminTab==='audit'){b=`<div class="panel"><h2>سجل التدقيق</h2><table><tr><th>الوقت</th><th>الإجراء</th><th>التفاصيل</th></tr>${C.audit.map(a=>`<tr><td>${fmt(a.created_at)}</td><td>${esc(a.action)}</td><td class="muted">${esc(a.entity)} ${esc(a.reason)}</td></tr>`).join('')||'<tr><td colspan=3 class="muted">فارغ</td></tr>'}</table></div>`}
   return shell(`<div class="tabs">${tabs.map(([k,t])=>`<button type="button" data-tab="${k}" class="${adminTab===k?'on':''}">${t}${k==='review'?` (${pend.length})`:''}</button>`).join('')}</div>${b}`,'#/admin');
 };
@@ -199,7 +233,7 @@ function setupPage(){return `<main class="shell"><div class="panel" style="max-w
 function render(){
   if(!sb){$('#app').innerHTML=setupPage();return}
   const h=cur.slice(1);const [,a,id]=h.split('/');const key='/'+(a||'');
-  const f=V[key]||V['/'];$('#app').innerHTML=f(id);scrollTo(0,0);hydrate();
+  const f=V[key]||V['/'];$('#app').innerHTML=f(id);scrollTo(0,0);hydrate();tick();
 }
 async function hydrate(){
   for(const el of document.querySelectorAll('.ev[data-path]')){
@@ -215,10 +249,14 @@ const A='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 const genCode=()=>{const b=new Uint8Array(6);crypto.getRandomValues(b);return 'LAYALI-'+[...b].map(x=>A[x%A.length]).join('')};
 async function signin(email,password){
   const {error}=await sb.auth.signInWithPassword({email,password});if(error)return toast(errmsg(error));
-  const st=await loadMe();if(st==='inactive')return toast('حسابك غير مفعّل، كلّمي الإدارة');
+  const st=await loadMe();if(st==='inactive')return toast('حسابك غير مفعّل، كلّمي الإدارة');if(st)return toast('تعذر قراءة الحساب: '+st.slice(4));
   await go(isStaff()?'#/admin':'#/tasks');
 }
 
+async function uploadMedia(file,dir){
+  if(file.size>10*1024*1024)throw new Error('الصورة كبيرة، الحد ١٠ ميجا');
+  const blob=(await shrink(file))||file;const path=`${dir}/${Date.now()}.jpg`;
+  const up=await sb.storage.from('media').upload(path,blob,{contentType:'image/jpeg'});if(up.error)throw up.error;return path}
 async function handleForm(f,fd,sub){
   if(f.id==='loginf'){const code=(fd.get('code')||'').trim().toUpperCase().replace(/\s+/g,'');return signin(code.toLowerCase()+'@layali.app',code)}
   if(f.id==='adminf')return signin((fd.get('email')||'').trim(),fd.get('password'));
@@ -249,10 +287,21 @@ async function handleForm(f,fd,sub){
   if(f.classList.contains('rwf'))return run(async()=>{const r=await sb.from('chest_rewards').insert({chest_id:f.dataset.chest,type:fd.get('type'),title:fd.get('title'),rarity:fd.get('rarity')});if(r.error)throw r.error});
   if(f.id==='gf')return run(async()=>{if(!fd.get('chest')||!fd.get('pid'))throw new Error('اختاري الصندوق والمشاركة');const r=await sb.from('chest_grants').insert({chest_id:fd.get('chest'),user_id:fd.get('pid'),reason:fd.get('reason')});if(r.error)throw r.error;await log('chest:grant',name(fd.get('pid')),fd.get('reason'))},'تم المنح');
   if(f.id==='agf')return run(async()=>{if(!fd.get('chest')||!fd.get('week'))throw new Error('أنشئي صندوقًا ومهام أولًا');const r=await sb.rpc('autogrant_week',{p_week:+fd.get('week'),p_chest:fd.get('chest')});if(r.error)throw r.error;if(!r.data)throw new Error('ما فيه نقاط لهذا الأسبوع')},'تم منح الصناديق');
-  if(f.id==='annf')return run(async()=>{const r=await sb.from('announcements').insert({title:fd.get('title'),body:fd.get('body')});if(r.error)throw r.error;await log('announcement',fd.get('title'))},'تم النشر');
+  if(f.id==='przf')return run(async()=>{
+    const o={place:+fd.get('place')||1,title:fd.get('title'),how_to:fd.get('how')||''};const file=fd.get('image');const old=editPrize&&C.prizes.find(x=>x.id===editPrize);
+    if(file&&file.size){o.image_path=await uploadMedia(file,'prize');if(old&&old.image_path)await sb.storage.from('media').remove([old.image_path])}
+    let r;if(editPrize){r=await sb.from('prizes').update(o).eq('id',editPrize);editPrize=null}else r=await sb.from('prizes').insert(o);
+    if(r.error)throw r.error;await log('prize:save',o.title)},'تم حفظ الجائزة');
+  if(f.id==='annf')return run(async()=>{
+    const o={title:fd.get('title'),body:fd.get('body')};const file=fd.get('image');
+    if(file&&file.size){if(file.size>10*1024*1024)throw new Error('الصورة كبيرة، الحد ١٠ ميجا');
+      const blob=(await shrink(file))||file;const path=`ann/${Date.now()}.jpg`;
+      const up=await sb.storage.from('media').upload(path,blob,{contentType:'image/jpeg'});if(up.error)throw up.error;o.image_path=path}
+    const r=await sb.from('announcements').insert(o);if(r.error)throw r.error;await log('announcement',o.title)},'تم النشر');
+  if(f.id==='cdf')return run(async()=>{const at=fd.get('at');if(!at)throw new Error('اختاري التاريخ');const r=await sb.from('settings').update({countdown_title:fd.get('title'),countdown_at:new Date(at).toISOString()}).eq('id',1);if(r.error)throw r.error},'تم حفظ العد التنازلي');
   if(f.id==='trf')return run(async()=>{const r=await sb.from('settings').update({treasure_title:fd.get('title'),treasure_need:+fd.get('need')||1,treasure_desc:fd.get('desc')||''}).eq('id',1);if(r.error)throw r.error},'تم الحفظ');
 }
-const TABLES={task:'tasks',ann:'announcements',chest:'chests',reward:'chest_rewards',grant:'chest_grants',key:'treasure_keys'};
+const TABLES={prize:'prizes',task:'tasks',ann:'announcements',chest:'chests',reward:'chest_rewards',grant:'chest_grants',key:'treasure_keys'};
 document.addEventListener('submit',e=>e.preventDefault());
 document.addEventListener('click',e=>{
   const an=e.target.closest('a[href^="#/"]');if(an){e.preventDefault();go(an.getAttribute('href'));return}
@@ -266,8 +315,13 @@ document.addEventListener('click',e=>{
   if(a==='logout'){sb.auth.signOut().then(()=>{me=null;C=emptyC();go('#/')});return}
   if(a==='del'){e.preventDefault();const k=t.dataset.kind+id;if(armed!==k){armed=k;render();return}armed='';const kind=t.dataset.kind;
     run(async()=>{let r;
+      if(kind==='prize'){const x=C.prizes.find(a=>a.id===id);if(x&&x.image_path)await sb.storage.from('media').remove([x.image_path])}
+      if(kind==='ann'){const x=C.anns.find(a=>a.id===id);if(x&&x.image_path)await sb.storage.from('media').remove([x.image_path])}
       if(kind==='user')r=await sb.rpc('admin_delete_user',{p_user:id});else r=await sb.from(TABLES[kind]).delete().eq('id',id);
       if(r.error)throw r.error;if(kind!=='user')await log('delete:'+kind,id)},'تم الحذف');return}
+  if(a==='clearcd'){run(async()=>{const r=await sb.from('settings').update({countdown_title:null,countdown_at:null}).eq('id',1);if(r.error)throw r.error},'تمت الإزالة');return}
+  if(a==='editprize'){editPrize=id;render();return}
+  if(a==='cancelprize'){editPrize=null;render();return}
   if(a==='edittask'){editTask=id;render();return}
   if(a==='canceledit'){editTask=null;render();return}
   if(a==='togtask'){const x=C.tasks.find(x=>x.id===id);run(async()=>{const r=await sb.from('tasks').update({published:!x.published}).eq('id',id);if(r.error)throw r.error});return}
@@ -276,6 +330,8 @@ document.addEventListener('click',e=>{
   if(a==='key'){const place=+t.dataset.place;run(async()=>{const r=await sb.from('treasure_keys').insert({user_id:id,place,why:'ختام الموسم',awarded_by:me.id});if(r.error)throw r.error;await log('key:award',name(id),'المركز '+place)},'تم منح المفتاح 🗝️');return}
   if(a==='open'){run(async()=>{const r=await sb.rpc('open_chest',{p_grant:id});if(r.error)throw r.error;toast('🎉 حصلتِ على: '+(r.data&&r.data.title))});return}
 });
+document.addEventListener('change',e=>{const i=e.target.closest('input[data-prz]');if(!i||!i.files[0])return;const id=i.dataset.prz,file=i.files[0];
+  run(async()=>{const old=C.prizes.find(x=>x.id===id);const path=await uploadMedia(file,'prize');const r=await sb.from('prizes').update({image_path:path}).eq('id',id);if(r.error)throw r.error;if(old&&old.image_path)await sb.storage.from('media').remove([old.image_path])},'تم رفع الصورة')});
 addEventListener('hashchange',()=>{const h=location.hash||'#/';if(h!==cur)go(h)});
 
 async function init(){
